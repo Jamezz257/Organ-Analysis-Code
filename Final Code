@@ -1,0 +1,112 @@
+from os.path import dirname, join as pjoin
+from scipy.io import wavfile as wav
+import scipy.io
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.fftpack import fft, fftfreq
+import glob
+import math
+import pandas as pd
+import openpyxl
+from openpyxl import Workbook as wb
+
+datadir = pjoin(dirname(scipy.io.__file__), 'tests', 'data')
+filelist = glob.glob("*.wav")
+
+wb = openpyxl.Workbook()
+sheet = wb.create_sheet('sound samples')
+wb.active = wb['sound samples']
+filenum = 0
+excel = np.arange(0,25000,10)
+excelpos = excel.tolist()
+
+
+for file in filelist:
+    filenum+=1
+    samplerate, data = wav.read(file)
+    length = data.shape[0] / samplerate #number of points / time per point = total clip length
+    time = np.linspace(0., length, data.shape[0]) #start 0, stop 
+
+    plt.plot(time, data, label="A")
+    plt.xlim(3, 3.05)
+    plt.legend()
+    plt.title(file)
+    plt.xlabel("Time [s]")
+    plt.ylabel("Amplitude")
+    plt.show()
+
+    print(filenum)
+    fftx = fftfreq(data.shape[0], 1/samplerate) #the frequency x axis of the fourier transform
+    rate, data = wav.read(file)
+    fft_out = fft(data) #the fourier transform of the data
+    %matplotlib inline
+    plt.plot(fftx, np.abs(fft_out))
+    plt.xlim(0,5000) #restricts the fourier transform *graph* to within 5kHz so we can see better the spikes
+    plt.show()
+
+
+
+    amplist = np.abs(fft_out).tolist() #All Amplitudes as a python list
+    ampdesc = sorted(amplist, reverse=True) #All amplitudes in decending order   
+    freqLarge = [] #empty list of the largest frequencies (to be added to)
+    newfreq = [] #another empty list used in a duplication elimination step
+    tempamp = []
+    N = 0
+    
+    amplimit = ampdesc[0]/30
+    
+    for i in range(len(amplist)):
+        if amplist[i] > (amplimit): #Finds out how many 'spikes' are above 200,000 in amplitude - an arbitrary minimum we chose
+            N+=1
+            
+    Excel_freq = []   
+    Excel_amp = []
+    
+    for x in range(N): #for every 'spike', find it's index, find the frequency that is correlated, divide by 10
+        #round to integer, and times by 10 - gives the frequencies to the nearest 10Hz
+        freqindex = amplist.index(ampdesc[x])#index of the frequencies with largest amp       
+        freqLONG = fftx[freqindex]
+        freqDEC = freqLONG/10
+        freqSMOL = round(freqDEC, 0)
+        intfreq = int(freqSMOL*10)        
+        freqLarge.append(intfreq) #list of largest amp'd freqs
+        tempamp.append(ampdesc[x]) #adds the largest amps to a list
+        
+    freqSorted = sorted(freqLarge)
+    #print(freqLarge)  
+    maxAmp = []
+    for x in range(N):
+        
+        if x+1<N and freqSorted[x]==freqSorted[x+1]:
+            #append the max amps list with the amp of each of these freqs
+            #freqlarge is integer list of freqs with all largest amps
+            ampindex1 = freqLarge.index(freqSorted[x])          
+            ampindex2 = freqLarge.index(freqSorted[x+1])            
+            maxAmp.append(ampdesc[ampindex1])            
+            maxAmp.append(ampdesc[ampindex2])
+            #find the index of the xth frequency
+            
+        if x+1<N and freqSorted[x]!=freqSorted[x+1]:
+            maxAmp.append(ampdesc[freqLarge.index(freqSorted[x])])
+            Excel_amp.append(max(maxAmp))
+            maxAmp = []
+            
+        if x+1==N:
+            ampindex = freqLarge.index(freqSorted[x])            
+            Excel_amp.append(ampdesc[ampindex])   
+                
+    Excel_freq = list(set(freqLarge)) #makes a new list the same as above without dupes
+    Excel_freq.sort()
+    
+    #Add titles in the first row of each column
+    sheet.cell(row=1, column=(3*filenum)-2).value=str(file)
+    sheet.cell(row=2, column=(3*filenum)-2).value='Frequency'
+    sheet.cell(row=2, column=(3*filenum)-1).value='Amplitude'
+
+    #Loop to set the value of each cell
+    for i in range(0, len(Excel_freq)):
+        sheet.cell(row=(excelpos.index(Excel_freq[i]))+3, column=(3*filenum)-2).value=Excel_freq[i]#with country being your array full of country names. If you have 5 values for one country I would advise just having the country name in there five times.
+        sheet.cell(row=(excelpos.index(Excel_freq[i]))+3, column=(3*filenum)-1).value=Excel_amp[i]#array with products
+    
+wb.save('Tester2.xlsx')
+    
